@@ -30,32 +30,27 @@
   <script defer src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
   <script defer src="ductos.js"></script>
   <!--
-    Los dos archivos de clientes se cargan con "capturas" intermedias.
-    Motivo: si ambos declaran window.CLIENTES_POTENCIALES (por venir del mismo
-    convertidor), el segundo pisaría al primero y Morelia se perdería.
-    Guardando el contenido entre una carga y otra, funciona en los dos casos:
-    ya sea que el archivo de Tototlán use CLIENTES_POTENCIALES_TOTOTLAN o no.
+    Interceptor de datos. Se ejecuta ANTES que los archivos (no lleva defer,
+    así que corre durante el parseo) e intercepta cada asignación a
+    window.CLIENTES_POTENCIALES guardándolas en orden.
+    Motivo: si ambos archivos declaran la misma variable, el segundo pisaría
+    al primero. Así funciona en los dos casos, esté o no corregido el archivo.
   -->
-  <script defer src="ClientesPotenciales.js"></script>
-  <script defer>
-    window.__REF_M  = window.CLIENTES_POTENCIALES;
-    window.__DATA_M = Array.isArray(window.CLIENTES_POTENCIALES) ? window.CLIENTES_POTENCIALES.slice() : [];
-  </script>
-  <script defer src="ClientesPotencialesTototlan.js"></script>
-  <script defer>
-    (function(){
-      var T = window.CLIENTES_POTENCIALES_TOTOTLAN;
-      if (Array.isArray(T)) {                                  // caso normal
-        window.__DATA_T = T.slice();
-      } else if (window.CLIENTES_POTENCIALES !== window.__REF_M
-                 && Array.isArray(window.CLIENTES_POTENCIALES)) {
-        window.__DATA_T = window.CLIENTES_POTENCIALES.slice(); // el 2º archivo pisó la variable
-        window.__COLISION = true;
-      } else {
-        window.__DATA_T = [];
-      }
+  <script>
+    (function () {
+      var capturas = [], valor;
+      try {
+        Object.defineProperty(window, 'CLIENTES_POTENCIALES', {
+          configurable: true,
+          get: function () { return valor; },
+          set: function (v) { valor = v; if (Array.isArray(v)) capturas.push(v); }
+        });
+      } catch (e) { /* si falla, se usan las variables directas */ }
+      window.__CAPTURAS = capturas;
     })();
   </script>
+  <script defer src="ClientesPotenciales.js"></script>
+  <script defer src="ClientesPotencialesTototlan.js"></script>
   <style>
     /* ===== ESTILOS OPTIMIZADOS ===== */
     :root {
@@ -484,8 +479,13 @@ document.addEventListener('DOMContentLoaded', function(){
 
   // ===== DATOS DE CLIENTES =====
   // Morelia: ClientesPotenciales.js  |  Tototlán: ClientesPotencialesTototlan.js
-  let rawMorelia  = Array.isArray(window.__DATA_M) ? window.__DATA_M : (window.CLIENTES_POTENCIALES || []);
-  let rawTototlan = Array.isArray(window.__DATA_T) ? window.__DATA_T : (window.CLIENTES_POTENCIALES_TOTOTLAN || []);
+  // caps[0] = 1ª asignación (Morelia) · caps[1] = 2ª (Tototlán, solo si pisó la variable)
+  const caps = Array.isArray(window.__CAPTURAS) ? window.__CAPTURAS : [];
+  const tototlanPropio = Array.isArray(window.CLIENTES_POTENCIALES_TOTOTLAN);
+  window.__COLISION = !tototlanPropio && caps.length > 1;
+
+  let rawMorelia  = caps[0] || (Array.isArray(window.CLIENTES_POTENCIALES) ? window.CLIENTES_POTENCIALES : []);
+  let rawTototlan = tototlanPropio ? window.CLIENTES_POTENCIALES_TOTOTLAN : (caps[1] || []);
 
   // El localStorage solo sobrescribe el directorio de Morelia (es el que edita el convertidor)
   const clientesGuardado = localStorage.getItem('CLIENTES_JS');
